@@ -10,18 +10,21 @@ app.use(express.json());
 app.use(cors()); // Allow cross-origin requests
 
 // Import Routes
-const donorAuthRoutes = require('./routes/donor/auth');
-const organizationAuthRoutes = require('./routes/organization/auth');
-// const adminRoutes = require('./routes/admin/auth');
+const donorRegister = require('./routes/donor/register');
+const organizationRegister = require('./routes/organization/register');
+const loginRoute = require('./routes/login');
+const adminRoute = require('./routes/admin/register');
 
 // Use Routes
-app.use('/api/donor', donorAuthRoutes); // Corrected route structure
-app.use('/api/organization', organizationAuthRoutes);
-// app.use('/api/admin', adminRoutes);
+app.use('/api/donor', donorRegister);
+app.use('/api/organization', organizationRegister);
+app.use('/api/admin', adminRoute);
+app.use('/api', loginRoute);
+
 
 // Default Route
 app.get('/', (req, res) => {
-    res.send('Welcome to the GiveNTake API');
+    res.send('This is GiveNTake API');
 });
 
 // Start Server
