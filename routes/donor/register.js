@@ -1,5 +1,4 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
 const supabase = require("../../supabaseClient");
 require("dotenv").config();
 
@@ -32,7 +31,7 @@ router.post("/register", async (req, res) => {
   try {
     console.log("Checking if email exists:", email);
 
-    // Check if the email already exists
+    // Check if email already exists
     const { data: existingUser, error: userError } = await supabase
       .from("users")
       .select("id")
@@ -52,36 +51,50 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    // Hash the password
-    console.log("Hashing password...");
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Step 1: Insert into `users` table first
-    console.log("Inserting into users table...");
-    const { data: userData, error: userInsertError } = await supabase
-      .from("users")
-      .insert([
-        {
-          email,
-          password: hashedPassword,
-          phone,
+    // Create user in Supabase Auth
+    console.log("Creating user in Supabase Auth...");
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
           full_name: `${fname} ${lname}`,
-          user_type: "donor", // Only donor is allowed
+          phone,
+          user_type: "donor",
         },
-      ])
-      .select("id") // Get the inserted user's ID
-      .single();
+      },
+    });
+
+    if (authError) throw authError;
+    console.log("User created in Supabase Auth successfully.");
+
+    const userId = authData.user.id;
+
+    // Insert into `users` table
+    console.log("Inserting into users table...");
+    const { error: userInsertError } = await supabase.from("users").insert([
+      {
+        id: userId,
+        email,
+        phone,
+        password: password,
+        full_name: `${fname} ${lname}`,
+        user_type: "donor",
+        is_verified: false,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ]);
 
     if (userInsertError) throw userInsertError;
-    console.log("User inserted successfully:", userData);
+    console.log("User inserted into database successfully.");
 
-    const userId = userData.id; // This is the foreign key reference
-
-    // Step 2: Insert into `donor` table using `user_id`
+    // Insert into `donor` table
     console.log("Inserting into donor table...");
     const { error: donorInsertError } = await supabase.from("donor").insert([
       {
-        user_id: userId, // Reference `users.id`
+        user_id: userId,
         phone,
         cnic_no,
         fname,
@@ -90,15 +103,21 @@ router.post("/register", async (req, res) => {
       },
     ]);
 
-    if (donorInsertError) throw donorInsertError;
-    console.log(`Donor entry created successfully for user ${email}`);
+    if (donorInsertError) {
+      // Rollback user creation
+      await supabase.auth.admin.deleteUser(userId);
+      await supabase.from("users").delete().eq("id", userId);
+      throw donorInsertError;
+    }
 
+    console.log(`Donor entry created successfully for user ${email}`);
     res.status(201).json({ message: "Donor registered successfully" });
   } catch (error) {
     console.error("Registration failed:", error.message);
-    return res
-      .status(500)
-      .json({ message: "Registration failed", error: error.message });
+    return res.status(500).json({
+      message: "Registration failed",
+      error: error.message,
+    });
   }
 });
 
